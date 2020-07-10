@@ -1,0 +1,635 @@
+---
+title: "MLB Arsenal Grades"
+output: html_document
+---
+
+```{r}
+
+#This is where I had stored play by play data
+Play_By_Play <- read.csv("All Data.csv")
+View(Play_By_Play)
+Play_By_Play <- Play_By_Play[, -1]
+
+#Adding columns to denote if there is a SM or CSW (Called or Swinging Strike)
+Play_By_Play <- Play_By_Play %>% mutate(SM = case_when(
+  description == "hit_into_play" ~ 0,
+  description == "called_strike" ~ 0,
+  description == "swinging_strike" ~ 1,
+  description == "ball" ~ 0,
+  description == "foul" ~ 0,
+  description == "hit_into_play_score" ~ 0,
+  description == "hit_into_play_no_out" ~ 0,
+  description == "blocked_ball" ~ 0,
+  description == "swinging_strike_blocked" ~ 1,
+  description == "foul_tip" ~ 0,
+  description == "hit_by_pitch" ~ 0,
+  description == "pitchout" ~ 0,
+  description == "missed_bunt" ~ 0,
+  description == "foul_bunt" ~ 0, 
+  description == "bunt_foul_tip" ~ 0
+), CSW = case_when(
+  description == "hit_into_play" ~ 0,
+  description == "called_strike" ~ 1,
+  description == "swinging_strike" ~ 1,
+  description == "ball" ~ 0,
+  description == "foul" ~ 0,
+  description == "hit_into_play_score" ~ 0,
+  description == "hit_into_play_no_out" ~ 0,
+  description == "blocked_ball" ~ 0,
+  description == "swinging_strike_blocked" ~ 1,
+  description == "foul_tip" ~ 0,
+  description == "hit_by_pitch" ~ 0,
+  description == "pitchout" ~ 0,
+  description == "missed_bunt" ~ 0,
+  description == "foul_bunt" ~ 0, 
+  description == "bunt_foul_tip" ~ 0
+)) 
+
+#Create new column for each part of date
+Play_By_Play <- separate(Play_By_Play, game_date, into = c("Year", "M", "D"), sep = c("-", "-"))
+View(Play_By_Play)
+
+#Create dataframes for each pitch
+Play_By_Play <- Play_By_Play %>% mutate(abs_pfx_x = abs(pfx_x))
+FourSeams <- Play_By_Play %>% filter(pitch_type == "FF") %>% filter(!is.na(release_spin_rate) & !is.na(plate_x) & !is.na(plate_z) & !is.na(pfx_z) & !is.na(pfx_x) & !is.na(SM) & !is.na(release_speed)& !is.na(release_extension) & !is.na(release_pos_z))
+Cutters <- Play_By_Play %>% filter(pitch_type == "FC") %>% filter(!is.na(release_spin_rate) & !is.na(plate_x) & !is.na(plate_z) & !is.na(pfx_z) & !is.na(pfx_x) & !is.na(SM) & !is.na(release_speed)& !is.na(release_extension) & !is.na(release_pos_z))
+TwoSeams <- Play_By_Play %>% filter(pitch_type == "FT") %>% filter(!is.na(release_spin_rate) & !is.na(plate_x) & !is.na(plate_z) & !is.na(pfx_z) & !is.na(pfx_x) & !is.na(SM) & !is.na(release_speed)& !is.na(release_extension) & !is.na(release_pos_z))
+Sinkers <- Play_By_Play %>% filter(pitch_type == "FS") %>% filter(!is.na(release_spin_rate) & !is.na(plate_x) & !is.na(plate_z) & !is.na(pfx_z) & !is.na(pfx_x) & !is.na(SM) & !is.na(release_speed)& !is.na(release_extension) & !is.na(release_pos_z))
+Changeups <- Play_By_Play %>% filter(pitch_type == "CH") %>% filter(!is.na(release_spin_rate)) %>% filter(!is.na(release_spin_rate) & !is.na(plate_x) & !is.na(plate_z) & !is.na(pfx_z) & !is.na(pfx_x) & !is.na(SM) & !is.na(release_speed) & !is.na(release_extension) & !is.na(release_pos_z))
+Sliders <- Play_By_Play %>% filter(pitch_type == "SL") %>% filter(!is.na(release_spin_rate)) %>% filter(!is.na(release_spin_rate) & !is.na(plate_x) & !is.na(plate_z) & !is.na(pfx_z) & !is.na(pfx_x) & !is.na(SM) & !is.na(release_speed)& !is.na(release_extension) & !is.na(release_pos_z))
+Curveballs <- Play_By_Play %>% filter(pitch_type == "CU") %>% filter(!is.na(release_spin_rate)) %>% filter(!is.na(release_spin_rate) & !is.na(plate_x) & !is.na(plate_z) & !is.na(pfx_z) & !is.na(pfx_x) & !is.na(SM) & !is.na(release_speed)& !is.na(release_extension) & !is.na(release_pos_z))
+
+
+
+
+### GRADING PITCH TYPES ##
+
+## MODEL for all types of FB
+#Use model.matrix() to create matrix of predictors and automatically convert categorical predictors to appropriate dummy variables
+x_FF <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, FourSeams)
+y_FF <- FourSeams$SM
+x_FC <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Cutters)
+y_FC <- Cutters$SM
+x_FT <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, TwoSeams)
+y_FT <- TwoSeams$SM
+#Find the best lambda with cv
+cv.lasso_ff <- cv.glmnet(x_FF, y_FF, family = "binomial", alpha = 1, lambda = NULL)
+cv.lasso_fc <- cv.glmnet(x_FC, y_FC, family = "binomial", alpha = 1, lambda = NULL)
+cv.lasso_ft <- cv.glmnet(x_FT, y_FT, family = "binomial", alpha = 1, lambda = NULL)
+#The plot shows the cv error according to the log of lambda. The left dashed vertical line shows the log of optimal value of lambda, one that minimizes prediction error.
+plot(cv.lasso_ff)
+plot(cv.lasso_fc)
+plot(cv.lasso_ft)
+#Now look at exact value
+cv.lasso_ff$lambda.min
+cv.lasso_fc$lambda.min
+cv.lasso_ft$lambda.min
+#lambda.min shows best lambda and it's regression coefficients
+coef(cv.lasso_ff, cv.lasso_ff$lambda.min)
+coef(cv.lasso_fc, cv.lasso_fc$lambda.min)
+coef(cv.lasso_ft, cv.lasso_ft$lambda.min)
+#Fit the model with lambda.min
+ff_glmnet <- glmnet(x_FF, y_FF, alpha = 1, family = "binomial", lambda = cv.lasso_ff$lambda.min)
+fc_glmnet <- glmnet(x_FC, y_FC, alpha = 1, family = "binomial", lambda = cv.lasso_fc$lambda.min)
+ft_glmnet <- glmnet(x_FT, y_FT, alpha = 1, family = "binomial", lambda = cv.lasso_ft$lambda.min)
+#Plot variable importance
+coef(ff_glmnet, s = "lambda.1se") %>% tidy() %>% filter(row != "(Intercept)") %>% ggplot(aes(value, reorder(row, value), color = value > 0)) + geom_point(show.legend = FALSE) + ggtitle("Influential variables") + xlab("Coefficient") + ylab(NULL)
+coef(fc_glmnet, s = "lambda.1se") %>% tidy() %>% filter(row != "(Intercept)") %>% ggplot(aes(value, reorder(row, value), color = value > 0)) + geom_point(show.legend = FALSE) + ggtitle("Influential variables") + xlab("Coefficient") + ylab(NULL)
+coef(ft_glmnet, s = "lambda.1se") %>% tidy() %>% filter(row != "(Intercept)") %>% ggplot(aes(value, reorder(row, value), color = value > 0)) + geom_point(show.legend = FALSE) + ggtitle("Influential variables") + xlab("Coefficient") + ylab(NULL)
+#Make predictions on the test data
+Preds <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, FourSeams)
+Probs_ff <- ff_glmnet %>% predict(newx = Preds, type = "response")
+Preds_ff <- ifelse(Probs_ff > 0.5, 1, 0)
+Preds <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Cutters)
+Probs_fc <- fc_glmnet %>% predict(newx = Preds, type = "response")
+Preds_fc <- ifelse(Probs_fc > 0.5, 1, 0)
+Preds <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, TwoSeams)
+Probs_ft <- ft_glmnet %>% predict(newx = Preds, type = "response")
+Preds_ft <- ifelse(Probs_ft > 0.5, 1, 0)
+# Apply a threshold
+Preds_ff <- data.frame(Preds_ff)
+data_ff = cbind(FourSeams$SM, Preds_ff)
+names(data_ff) = c("actual", "pred")
+Preds_fc <- data.frame(Preds_fc)
+data_fc = cbind(Cutters$SM, Preds_fc)
+names(data_fc) = c("actual", "pred")
+Preds_ft <- data.frame(Preds_ft)
+data_ft = cbind(TwoSeams$SM, Preds_ft)
+names(data_ft) = c("actual", "pred")
+#Table and confusion matrix
+tab_ff = table(data_ff$actual, data_ff$pred)
+cm_ff = confusionMatrix(tab_ff)
+cm_ff
+tab_fc = table(data_fc$actual, data_fc$pred)
+cm_fc = confusionMatrix(tab_fc)
+cm_fc
+tab_ft = table(data_ft$actual, data_ft$pred)
+cm_ft = confusionMatrix(tab_ft)
+cm_ft
+#Get Accuracy
+cm_ff$overall['Accuracy']
+cm_fc$overall['Accuracy']
+cm_ft$overall['Accuracy']
+#Put predictions into overall df so each pitcher can have a probability on each pitch
+Preds_FF <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, FourSeams)
+FourSeams$SM_Prob <- ff_glmnet %>% predict(newx = Preds_FF, type = "response")
+Preds_FC <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Cutters)
+Cutters$SM_Prob <- fc_glmnet %>% predict(newx = Preds_FC, type = "response")
+Preds_FT <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, TwoSeams)
+TwoSeams$SM_Prob <- ft_glmnet %>% predict(newx = Preds_FT, type = "response")
+
+
+
+## MODEL CH
+#Use model.matrix() to create matrix of predictors and automatically convert categorical predictors to appropriate dummy variables
+x_ch <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Changeups)
+y_ch <- Changeups$SM
+#X is matrix of predictors, y is binary response, alpha is mixing parameter which is 1 for lasso, lambda is amount of shrinkage to coefficients (this is defined as lambda minimizing cv prediction error rate determined automatically by cv.glmnet). Find the best lambda with cv
+cv.lasso_ch <- cv.glmnet(x_ch, y_ch, family = "binomial", alpha = 1, lambda = NULL)
+#The plot shows the cv error according to the log of lambda. The left dashed vertical line shows the log of optimal value of lambda, one that minimizes prediction error.
+plot(cv.lasso_ch)
+#Now look at exact value
+cv.lasso_ch$lambda.min
+#lambda.min shows best lambda and it's regression coefficients
+coef(cv.lasso_ch, cv.lasso_ch$lambda.min)
+#Fit the model with lambda.min
+ch_glmnet <- glmnet(x_ch, y_ch, alpha = 1, family = "binomial", lambda = cv.lasso_ch$lambda.min)
+#Plot variable importance
+coef(ch_glmnet, s = "lambda.1se") %>% tidy() %>% filter(row != "(Intercept)") %>% ggplot(aes(value, reorder(row, value), color = value > 0)) + geom_point(show.legend = FALSE) + ggtitle("Influential variables") + xlab("Coefficient") + ylab(NULL)
+#Make predictions on the test data
+Preds <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Changeups)
+Probs_ch <- ch_glmnet %>% predict(newx = Preds, type = "response")
+Preds_ch <- ifelse(Probs_ch > 0.5, 1, 0)
+#Create Preds DF
+Preds_ch <- data.frame(Preds_ch)
+data_ch = cbind(Changeups$SM, Preds_ch)
+names(data_ch) = c("actual", "pred")
+#Table and confusion matrix
+tab_ch = table(data_ch$actual, data_ch$pred)
+cm_ch = confusionMatrix(tab_ch)
+cm_ch
+#Get Accuracy
+cm_ch$overall['Accuracy']
+#Put predictions into overall df so each pitcher can have a probability on each pitch
+Preds_CH <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Changeups)
+Changeups$SM_Prob <- ch_glmnet %>% predict(newx = Preds_CH, type = "response")
+
+
+
+## MODEL SL
+#Use model.matrix() to create matrix of predictors and automatically convert categorical predictors to appropriate dummy variables
+x_sl <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Sliders)
+y_sl <- Sliders$SM
+#X is matrix of predictors, y is binary response, alpha is mixing parameter which is 1 for lasso, lambda is amount of shrinkage to coefficients (this is defined as lambda minimizing cv prediction error rate determined automatically by cv.glmnet). Find the best lambda with cv
+cv.lasso_sl <- cv.glmnet(x_sl, y_sl, family = "binomial", alpha = 1, lambda = NULL)
+#The plot shows the cv error according to the log of lambda. The left dashed vertical line shows the log of optimal value of lambda, one that minimizes prediction error.
+plot(cv.lasso_sl)
+#Now look at exact value
+cv.lasso_sl$lambda.min
+#lambda.min shows best lambda and it's regression coefficients
+coef(cv.lasso_sl, cv.lasso_sl$lambda.min)
+#Fit the model with lambda.min
+sl_glmnet <- glmnet(x_sl, y_sl, alpha = 1, family = "binomial", lambda = cv.lasso_sl$lambda.min)
+#Plot variable importance
+coef(sl_glmnet, s = "lambda.1se") %>% tidy() %>% filter(row != "(Intercept)") %>% ggplot(aes(value, reorder(row, value), color = value > 0)) + geom_point(show.legend = FALSE) + ggtitle("Influential variables") + xlab("Coefficient") + ylab(NULL)
+#Make predictions on the test data
+Preds <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Sliders)
+Probs_sl <- sl_glmnet %>% predict(newx = Preds, type = "response")
+Preds_sl <- ifelse(Probs_sl > 0.5, 1, 0)
+#Create Preds DF
+Preds_sl <- data.frame(Preds_sl)
+data_sl = cbind(Sliders$SM, Preds_sl)
+names(data_sl) = c("actual", "pred")
+#Table and confusion matrix
+tab_sl = table(data_sl$actual, data_sl$pred)
+cm_sl = confusionMatrix(tab_sl)
+cm_sl
+#Get Accuracy
+cm_sl$overall['Accuracy']
+#Put predictions into overall df so each pitcher can have a probability on each pitch
+Preds_SL <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Sliders)
+Sliders$SM_Prob <- sl_glmnet %>% predict(newx = Preds_SL, type = "response")
+
+
+## MODEL CB
+#Use model.matrix() to create matrix of predictors and automatically convert categorical predictors to appropriate dummy variables
+x_cb <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Curveballs)
+y_cb <- Curveballs$SM
+#X is matrix of predictors, y is binary response, alpha is mixing parameter which is 1 for lasso, lambda is amount of shrinkage to coefficients (this is defined as lambda minimizing cv prediction error rate determined automatically by cv.glmnet). Find the best lambda with cv
+cv.lasso_cb <- cv.glmnet(x_cb, y_cb, family = "binomial", alpha = 1, lambda = NULL)
+#The plot shows the cv error according to the log of lambda. The left dashed vertical line shows the log of optimal value of lambda, one that minimizes prediction error.
+plot(cv.lasso_cb)
+#Now look at exact value
+cv.lasso_cb$lambda.min
+#lambda.min shows best lambda and it's regression coefficients
+coef(cv.lasso_cb, cv.lasso_cb$lambda.min)
+#Fit the model with lambda.min
+cb_glmnet <- glmnet(x_cb, y_cb, alpha = 1, family = "binomial", lambda = cv.lasso_cb$lambda.min)
+#Plot variable importance
+coef(cb_glmnet, s = "lambda.1se") %>% tidy() %>% filter(row != "(Intercept)") %>% ggplot(aes(value, reorder(row, value), color = value > 0)) + geom_point(show.legend = FALSE) + ggtitle("Influential variables") + xlab("Coefficient") + ylab(NULL)
+#Make predictions on the test data
+Preds <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Curveballs)
+Probs_cb <- cb_glmnet %>% predict(newx = Preds, type = "response")
+Preds_cb <- ifelse(Probs_cb > 0.5, 1, 0)
+#Create Preds DF
+Preds_cb <- data.frame(Preds_cb)
+data_cb = cbind(Curveballs$SM, Preds_cb)
+names(data_cb) = c("actual", "pred")
+#Table and confusion matrix
+tab_cb = table(data_cb$actual, data_cb$pred)
+cm_cb = confusionMatrix(tab_cb)
+cm_cb
+#Get Accuracy
+cm_cb$overall['Accuracy']
+#Put predictions into overall df so each pitcher can have a probability on each pitch
+Preds_CB <- model.matrix(SM ~ release_extension + release_pos_z + release_speed + abs_pfx_x + pfx_z + plate_x + plate_z, Curveballs)
+Curveballs$SM_Prob <- cb_glmnet %>% predict(newx = Preds_CB, type = "response")
+
+
+
+
+#Summarize predictions and metrics for each pitch for each pitcher by year
+FF_Metrics <- FourSeams %>% group_by(pitcher, player_name, Year) %>% summarise(N_FF = n(), Rel_X_FF = median(release_pos_x), Rel_Z_FF = median(release_pos_z), Extension_FF = median(release_extension), Max_Velo_FF = max(release_speed), Avg_Velo_FF = mean(release_speed), Spin_FF = median(release_spin_rate), H_Break_FF = median(pfx_x), V_Break_FF = median(pfx_z), SwStr_FF = mean(SM), Pred_SwStr_FF = mean(SM_Prob), Med_Pred_SwStr_FF = median(SM_Prob), CSW_FF = mean(CSW))
+FC_Metrics <- Cutters %>% group_by(pitcher, player_name, Year) %>% summarise(N_FC = n(), Rel_X_FC = median(release_pos_x), Rel_Z_FC = median(release_pos_z), Extension_FC = median(release_extension), Max_Velo_FC = max(release_speed), Avg_Velo_FC = mean(release_speed), Spin_FC = median(release_spin_rate), H_Break_FC = median(pfx_x), V_Break_FC = median(pfx_z), SwStr_FC = mean(SM), Pred_SwStr_FC = mean(SM_Prob), Med_Pred_SwStr_FC = median(SM_Prob), CSW_FC = mean(CSW))
+FT_Metrics <- TwoSeams %>% group_by(pitcher, player_name, Year) %>% summarise(N_FT = n(), Rel_X_FT = median(release_pos_x), Rel_Z_FT = median(release_pos_z), Extension_FT = median(release_extension), Max_Velo_FT = max(release_speed), Avg_Velo_FT = mean(release_speed), Spin_FT = median(release_spin_rate), H_Break_FT = median(pfx_x), V_Break_FT = median(pfx_z), SwStr_FT = mean(SM), Pred_SwStr_FT = mean(SM_Prob), Med_Pred_SwStr_FT = median(SM_Prob), CSW_FT = mean(CSW))
+FS_Metrics <- Sinkers %>% group_by(pitcher, player_name, Year) %>% summarise(N_FS = n(), Rel_X_FS = median(release_pos_x), Rel_Z_FS = median(release_pos_z), Extension_FS = median(release_extension), Max_Velo_FS = max(release_speed), Avg_Velo_FS = mean(release_speed), Spin_FS = median(release_spin_rate), H_Break_FS = median(pfx_x), V_Break_FS = median(pfx_z), SwStr_FS = mean(SM), Pred_SwStr_FS = mean(SM_Prob), Med_Pred_SwStr_FS = median(SM_Prob), CSW_FS = mean(CSW))
+CH_Metrics <- Changeups %>% group_by(pitcher, player_name, Year) %>% summarise(N_CH = n(), Rel_X_CH = median(release_pos_x), Rel_Z_CH = median(release_pos_z), Extension_CH = median(release_extension), Max_Velo_CH = max(release_speed), Avg_Velo_CH = mean(release_speed), Spin_CH = median(release_spin_rate), H_Break_CH = median(pfx_x), V_Break_CH = median(pfx_z), SwStr_CH = mean(SM), Pred_SwStr_CH = mean(SM_Prob), Med_Pred_SwStr_CH = median(SM_Prob), CSW_CH = mean(CSW))
+SL_Metrics <- Sliders %>% group_by(pitcher, player_name, Year) %>% summarise(N_SL = n(), Rel_X_SL = median(release_pos_x), Rel_Z_SL = median(release_pos_z), Extension_SL = median(release_extension), Max_Velo_SL = max(release_speed), Avg_Velo_SL = mean(release_speed), Spin_SL = median(release_spin_rate), H_Break_SL = median(pfx_x), V_Break_SL = median(pfx_z), SwStr_SL = mean(SM), Pred_SwStr_SL = mean(SM_Prob), Med_Pred_SwStr_SL = median(SM_Prob), CSW_SL = mean(CSW))
+CB_Metrics <- Curveballs %>% group_by(pitcher, player_name, Year) %>% summarise(N_CB = n(), Rel_X_CB = median(release_pos_x), Rel_Z_CB = median(release_pos_z), Extension_CB = median(release_extension), Max_Velo_CB = max(release_speed), Avg_Velo_CB = mean(release_speed), Spin_CB = median(release_spin_rate), H_Break_CB = median(pfx_x), V_Break_CB = median(pfx_z), SwStr_CB = mean(SM), Pred_SwStr_CB = mean(SM_Prob), Med_Pred_SwStr_CB = median(SM_Prob), CSW_CB = mean(CSW))
+#Merge data frames for each pitch type together
+a <- full_join(FF_Metrics, FC_Metrics, by = c("pitcher", "player_name", "Year"))
+b <- full_join(a, FT_Metrics, by = c("pitcher", "player_name", "Year"))
+c <- full_join(b, FS_Metrics, by = c("pitcher", "player_name", "Year"))
+d <- full_join(c, CH_Metrics, by = c("pitcher", "player_name", "Year"))
+e <- full_join(d, SL_Metrics, by = c("pitcher", "player_name", "Year"))
+Pitch_Metrics <- full_join(e, CB_Metrics, by = c("pitcher", "player_name", "Year"))
+View(Pitch_Metrics)
+#Import Fangraphs Performance Stats
+FG_Pitchers <- read.csv("FG Pitchers.csv")
+View(FG_Pitchers)
+FG_Pitchers <- FG_Pitchers %>% filter(IP > 15)
+#Merge with pitch metrics
+names(Pitch_Metrics)[2] <- "Name"
+Pitch_Metrics$Year <- as.numeric(Pitch_Metrics$Year)
+Combined_Pitchers <- left_join(FG_Pitchers, Pitch_Metrics, by = c("Name", "Year"))
+View(Combined_Pitchers)
+#Take the best breaking ball and fastball:
+Combined_Pitchers <- Combined_Pitchers %>% group_by(Name, Year) %>% mutate(MaxBB = max(Pred_SwStr_SL, Pred_SwStr_CB), MaxFB = max(Pred_SwStr_FF, Pred_SwStr_FC, Pred_SwStr_FT, Pred_SwStr_FS))
+#Had to manually change some things in the data to get max of each pitch type
+write.csv(Combined_Pitchers, "Combined_Pitchers.csv")
+
+
+
+
+### GRADING ARSENALS ##
+Combined_Pitchers <- read.csv("Combined_Pitchers.csv")
+#Using a total of 1053 pitchers from 15-19 when taking guys with a fastball, breaking ball, changeup and 40 IP
+Combined_Pitchers <- Combined_Pitchers %>% filter(!is.na(MaxFB) & MaxFB > 0 & !is.na(MaxBB) & MaxBB > 0 & !is.na(Pred_SwStr_CH) & IP > 40 & !is.na(Breaking.) & !is.na(CH.) & !is.na(Fastball.) & !is.na(BB.) & IP > 40 & !is.na(xFIP))
+Combined_Pitchers$BB. <- substr(Combined_Pitchers$BB., 0, 4)
+Combined_Pitchers$BB. <- as.numeric(Combined_Pitchers$BB.)
+Combined_Pitchers$CH. <- substr(Combined_Pitchers$CH., 0, 4)
+Combined_Pitchers$CH. <- as.numeric(Combined_Pitchers$CH.)
+#RF for Arsenal
+indexes <- sample(1:nrow(Combined_Pitchers), size = 0.20*nrow(Combined_Pitchers)) 
+test <- Combined_Pitchers[indexes,]
+train <- Combined_Pitchers[-indexes,]
+trControl <- trainControl(method = "cv", number = 10)
+arsenal_rf <- caret::train(xFIP ~ MaxFB + MaxBB + Pred_SwStr_CH, data = train,
+                           method = "rf",
+                           trControl = trControl,
+                           importance = TRUE, na.action=na.exclude)
+usage_arsenal_rf <- caret::train(xFIP ~ MaxFB * Fastball. + MaxBB * Breaking. + Pred_SwStr_CH * CH., data = train,
+                                 method = "rf",
+                                 trControl = trControl,
+                                 importance = TRUE, na.action=na.exclude)
+proj_rf <- caret::train(xFIP ~ MaxFB + MaxBB + Pred_SwStr_CH + BB., data = train,
+                        method = "rf",
+                        trControl = trControl,
+                        importance = TRUE, na.action=na.exclude)
+usage_proj_rf <- caret::train(xFIP ~ MaxFB * Fastball. + MaxBB * Breaking. + Pred_SwStr_CH * CH. + BB., data = train,
+                              method = "rf",
+                              trControl = trControl,
+                              importance = TRUE, na.action=na.exclude)
+arsenal_rf
+usage_arsenal_rf
+proj_rf
+usage_proj_rf
+
+varImp(arsenal_rf)
+varImp(usage_arsenal_rf)
+varImp(proj_rf)
+varImp(usage_proj_rf)
+
+#Analyze the RFs, tried multiple train/test splits
+pred_p <- predict(object = arsenal_rf, newdata = test)
+caret::RMSE(test$xFIP, pred_p) # 0.669595, 0.7187448
+caret::MAE(test$xFIP, pred_p) # 0.5287345, 0.5787289
+cor(test$xFIP, pred_p) * cor(test$xFIP, pred_p) # 0.06553478, 0.08828141 
+
+pred_p <- predict(object = usage_arsenal_rf, newdata = test)
+caret::RMSE(test$xFIP, pred_p) # 0.6919387, 0.7033738
+caret::MAE(test$xFIP, pred_p) # 0.5536049, 0.5623291
+cor(test$xFIP, pred_p) * cor(test$xFIP, pred_p) # 0.1241674, 0.1259346
+
+pred_p <- predict(object = proj_rf, newdata = test)
+caret::RMSE(test$xFIP, pred_p) # 0.6083302, 0.6621048
+caret::MAE(test$xFIP, pred_p) # 0.4672005, 0.5361838
+cor(test$xFIP, pred_p) * cor(test$xFIP, pred_p) # 0.1864042, 0.2013074
+
+pred_p <- predict(object = usage_proj_rf, newdata = test)
+caret::RMSE(test$xFIP, pred_p) # 0.6392474, 0.6438501
+caret::MAE(test$xFIP, pred_p) # 0.5126394, 0.5121798
+cor(test$xFIP, pred_p) * cor(test$xFIP, pred_p) # 0.262289, 0.2875212
+
+#Predictions on the whole data set
+Combined_Pitchers$arsenal_pred <- predict(object = arsenal_rf, newdata = Combined_Pitchers)
+Combined_Pitchers$urs_arsenal_pred <- predict(object = usage_arsenal_rf, newdata = Combined_Pitchers)
+Combined_Pitchers$FIP_pred <- predict(object = proj_rf, newdata = Combined_Pitchers)
+Combined_Pitchers$use_FIP_pred <- predict(object = usage_proj_rf, newdata = Combined_Pitchers)
+View(Combined_Pitchers)
+
+
+
+
+#Assign scouting grades to the arsenal scores and each pitch type (done on the whole data set and not training)
+#FB Grades
+fbmean <- mean(Combined_Pitchers$MaxFB)
+fbsd <- sd(Combined_Pitchers$MaxFB)
+Combined_Pitchers <- Combined_Pitchers %>% mutate(FB_Grade = case_when(
+  (MaxFB < (fbmean + 0.5 * fbsd)) & (MaxFB > (fbmean - 0.5 * fbsd)) ~ 50,
+  (MaxFB < (fbmean + 0.5 * fbsd)) & (MaxFB >= fbmean) ~ 55,
+  (MaxFB < (fbmean + fbsd)) & (MaxFB >= (fbmean + 0.5 * fbsd)) ~ 60,
+  (MaxFB > (fbmean + fbsd)) & (MaxFB <= (fbmean + 1.5 * fbsd)) ~ 65,
+  (MaxFB > (fbmean + 1.5 * fbsd)) & (MaxFB <= (fbmean + 2 * fbsd)) ~ 70,
+  (MaxFB > (fbmean + 2 * fbsd)) & (MaxFB <= (fbmean + 2.5 * fbsd)) ~ 75,
+  (MaxFB > (fbmean + 2.5 * fbsd)) & (MaxFB <= (fbmean + 3 * fbsd)) ~ 80,
+  (MaxFB >= (fbmean + 3 * fbsd)) ~ 80,
+  (MaxFB > (fbmean - 0.5 * fbsd)) & (MaxFB <= fbmean) ~ 45,
+  (MaxFB > (fbmean - fbsd)) & (MaxFB <= (fbmean - 0.5 * fbsd)) ~ 40,
+  (MaxFB < (fbmean - fbsd)) & (MaxFB >= (fbmean - 1.5 * fbsd)) ~ 35,
+  (MaxFB < (fbmean - 1.5 * fbsd)) & (MaxFB >= (fbmean - 2 * fbsd)) ~ 30,
+  (MaxFB < (fbmean - 2 * fbsd)) & (MaxFB >= (fbmean - 2.5 * fbsd)) ~ 25,
+  (MaxFB < (fbmean - 2.5 * fbsd)) & (MaxFB >= (fbmean - 3 * fbsd)) ~ 20,
+  (MaxFB <= (fbmean - 3 * fbsd)) ~ 20
+))
+#CH Grades
+ch_mean <- mean(Combined_Pitchers$Pred_SwStr_CH)
+chsd <- sd(Combined_Pitchers$Pred_SwStr_CH)
+Combined_Pitchers <- Combined_Pitchers %>% mutate(CH_Grade = case_when(
+  (Pred_SwStr_CH < (ch_mean + 0.5 * chsd)) & (Pred_SwStr_CH > (ch_mean - 0.5 * chsd)) ~ 50,
+  (Pred_SwStr_CH < (ch_mean + 0.5 * chsd)) & (Pred_SwStr_CH >= ch_mean) ~ 55,
+  (Pred_SwStr_CH < (ch_mean + chsd)) & (Pred_SwStr_CH >= (ch_mean + 0.5 * chsd)) ~ 60,
+  (Pred_SwStr_CH > (ch_mean + chsd)) & (Pred_SwStr_CH <= (ch_mean + 1.5 * chsd)) ~ 65,
+  (Pred_SwStr_CH > (ch_mean + 1.5 * chsd)) & (Pred_SwStr_CH <= (ch_mean + 2 * chsd)) ~ 70,
+  (Pred_SwStr_CH > (ch_mean + 2 * chsd)) & (Pred_SwStr_CH <= (ch_mean + 2.5 * chsd)) ~ 75,
+  (Pred_SwStr_CH > (ch_mean + 2.5 * chsd)) & (Pred_SwStr_CH <= (ch_mean + 3 * chsd)) ~ 80,
+  (Pred_SwStr_CH >= (ch_mean + 3 * chsd)) ~ 80,
+  (Pred_SwStr_CH > (ch_mean - 0.5 * chsd)) & (Pred_SwStr_CH <= ch_mean) ~ 45,
+  (Pred_SwStr_CH > (ch_mean - chsd)) & (Pred_SwStr_CH <= (ch_mean - 0.5 * chsd)) ~ 40,
+  (Pred_SwStr_CH < (ch_mean - chsd)) & (Pred_SwStr_CH >= (ch_mean - 1.5 * chsd)) ~ 35,
+  (Pred_SwStr_CH < (ch_mean - 1.5 * chsd)) & (Pred_SwStr_CH >= (ch_mean - 2 * chsd)) ~ 30,
+  (Pred_SwStr_CH < (ch_mean - 2 * chsd)) & (Pred_SwStr_CH >= (ch_mean - 2.5 * chsd)) ~ 25,
+  (Pred_SwStr_CH < (ch_mean - 2.5 * chsd)) & (Pred_SwStr_CH >= (ch_mean - 3 * chsd)) ~ 20,
+  (Pred_SwStr_CH <= (ch_mean - 3 * chsd)) ~ 20
+))
+#CB Grades
+cu <- Combined_Pitchers %>% filter(!is.na(Pred_SwStr_CB))
+cu_mean <- mean(cu$Pred_SwStr_CB)
+cusd <- sd(cu$Pred_SwStr_CB)
+Combined_Pitchers <- Combined_Pitchers %>% mutate(CB_Grade = case_when(
+  (Pred_SwStr_CB < (cu_mean + 0.5 * cusd)) & (Pred_SwStr_CB > (cu_mean - 0.5 * cusd)) ~ 50,
+  (Pred_SwStr_CB < (cu_mean + 0.5 * cusd)) & (Pred_SwStr_CB >= cu_mean) ~ 55,
+  (Pred_SwStr_CB < (cu_mean + cusd)) & (Pred_SwStr_CB >= (cu_mean + 0.5 * cusd)) ~ 60,
+  (Pred_SwStr_CB > (cu_mean + cusd)) & (Pred_SwStr_CB <= (cu_mean + 1.5 * cusd)) ~ 65,
+  (Pred_SwStr_CB > (cu_mean + 1.5 * cusd)) & (Pred_SwStr_CB <= (cu_mean + 2 * cusd)) ~ 70,
+  (Pred_SwStr_CB > (cu_mean + 2 * cusd)) & (Pred_SwStr_CB <= (cu_mean + 2.5 * cusd)) ~ 75,
+  (Pred_SwStr_CB > (cu_mean + 2.5 * cusd)) & (Pred_SwStr_CB <= (cu_mean + 3 * cusd)) ~ 80,
+  (Pred_SwStr_CB >= (cu_mean + 3 * cusd)) ~ 80,
+  (Pred_SwStr_CB > (cu_mean - 0.5 * cusd)) & (Pred_SwStr_CB <= cu_mean) ~ 45,
+  (Pred_SwStr_CB > (cu_mean - cusd)) & (Pred_SwStr_CB <= (cu_mean - 0.5 * cusd)) ~ 40,
+  (Pred_SwStr_CB < (cu_mean - cusd)) & (Pred_SwStr_CB >= (cu_mean - 1.5 * cusd)) ~ 35,
+  (Pred_SwStr_CB < (cu_mean - 1.5 * cusd)) & (Pred_SwStr_CB >= (cu_mean - 2 * cusd)) ~ 30,
+  (Pred_SwStr_CB < (cu_mean - 2 * cusd)) & (Pred_SwStr_CB >= (cu_mean - 2.5 * cusd)) ~ 25,
+  (Pred_SwStr_CB < (cu_mean - 2.5 * cusd)) & (Pred_SwStr_CB >= (cu_mean - 3 * cusd)) ~ 20,
+  (Pred_SwStr_CB <= (cu_mean - 3 * cusd)) ~ 20
+))
+#SL Grades
+sl <- Combined_Pitchers %>% filter(!is.na(Pred_SwStr_SL))
+sl_mean <- mean(sl$Pred_SwStr_SL)
+slsd <- sd(sl$Pred_SwStr_SL)
+Combined_Pitchers <- Combined_Pitchers %>% mutate(SL_Grade = case_when(
+  (Pred_SwStr_SL < (sl_mean + 0.5 * slsd)) & (Pred_SwStr_SL > (sl_mean - 0.5 * slsd)) ~ 50,
+  (Pred_SwStr_SL < (sl_mean + 0.5 * slsd)) & (Pred_SwStr_SL >= sl_mean) ~ 55,
+  (Pred_SwStr_SL < (sl_mean + slsd)) & (Pred_SwStr_SL >= (sl_mean + 0.5 * slsd)) ~ 60,
+  (Pred_SwStr_SL > (sl_mean + slsd)) & (Pred_SwStr_SL <= (sl_mean + 1.5 * slsd)) ~ 65,
+  (Pred_SwStr_SL > (sl_mean + 1.5 * slsd)) & (Pred_SwStr_SL <= (sl_mean + 2 * slsd)) ~ 70,
+  (Pred_SwStr_SL > (sl_mean + 2 * slsd)) & (Pred_SwStr_SL <= (sl_mean + 2.5 * slsd)) ~ 75,
+  (Pred_SwStr_SL > (sl_mean + 2.5 * slsd)) & (Pred_SwStr_SL <= (sl_mean + 3 * slsd)) ~ 80,
+  (Pred_SwStr_SL >= (sl_mean + 3 * slsd)) ~ 80,
+  (Pred_SwStr_SL > (sl_mean - 0.5 * slsd)) & (Pred_SwStr_SL <= sl_mean) ~ 45,
+  (Pred_SwStr_SL > (sl_mean - slsd)) & (Pred_SwStr_SL <= (sl_mean - 0.5 * slsd)) ~ 40,
+  (Pred_SwStr_SL < (sl_mean - slsd)) & (Pred_SwStr_SL >= (sl_mean - 1.5 * slsd)) ~ 35,
+  (Pred_SwStr_SL < (sl_mean - 1.5 * slsd)) & (Pred_SwStr_SL >= (sl_mean - 2 * slsd)) ~ 30,
+  (Pred_SwStr_SL < (sl_mean - 2 * slsd)) & (Pred_SwStr_SL >= (sl_mean - 2.5 * slsd)) ~ 25,
+  (Pred_SwStr_SL < (sl_mean - 2.5 * slsd)) & (Pred_SwStr_SL >= (sl_mean - 3 * slsd)) ~ 20,
+  (Pred_SwStr_SL <= (sl_mean - 3 * slsd)) ~ 20
+))
+#Arsenal Grades
+ars_mean <- mean(Combined_Pitchers$arsenal_pred)
+arssd <- sd(Combined_Pitchers$arsenal_pred)
+Combined_Pitchers <- Combined_Pitchers %>% mutate(ARS_Grade = case_when(
+  (arsenal_pred < (ars_mean + 0.5 * arssd)) & (arsenal_pred > (ars_mean - 0.5 * arssd)) ~ 50,
+  (arsenal_pred < (ars_mean + 0.5 * arssd)) & (arsenal_pred >= ars_mean) ~ 45,
+  (arsenal_pred < (ars_mean + arssd)) & (arsenal_pred >= (ars_mean + 0.5 * arssd)) ~ 40,
+  (arsenal_pred > (ars_mean + arssd)) & (arsenal_pred <= (ars_mean + 1.5 * arssd)) ~ 35,
+  (arsenal_pred > (ars_mean + 1.5 * arssd)) & (arsenal_pred <= (ars_mean + 2 * arssd)) ~ 30,
+  (arsenal_pred > (ars_mean + 2 * arssd)) & (arsenal_pred <= (ars_mean + 2.5 * arssd)) ~ 25,
+  (arsenal_pred > (ars_mean + 2.5 * arssd)) & (arsenal_pred <= (ars_mean + 3 * arssd)) ~ 20,
+  (arsenal_pred >= (ars_mean + 3 * arssd)) ~ 20,
+  (arsenal_pred > (ars_mean - 0.5 * arssd)) & (arsenal_pred <= ars_mean) ~ 55,
+  (arsenal_pred > (ars_mean - arssd)) & (arsenal_pred <= (ars_mean - 0.5 * arssd)) ~ 60,
+  (arsenal_pred < (ars_mean - arssd)) & (arsenal_pred >= (ars_mean - 1.5 * arssd)) ~ 65,
+  (arsenal_pred < (ars_mean - 1.5 * arssd)) & (arsenal_pred >= (ars_mean - 2 * arssd)) ~ 70,
+  (arsenal_pred < (ars_mean - 2 * arssd)) & (arsenal_pred >= (ars_mean - 2.5 * arssd)) ~ 75,
+  (arsenal_pred < (ars_mean - 2.5 * arssd)) & (arsenal_pred >= (ars_mean - 3 * arssd)) ~ 80,
+  (arsenal_pred <= (ars_mean - 3 * arssd)) ~ 80
+))
+#Arsenal Usage Grades
+urs_ars_mean <- mean(Combined_Pitchers$urs_arsenal_pred)
+ursarssd <- sd(Combined_Pitchers$urs_arsenal_pred)
+Combined_Pitchers <- Combined_Pitchers %>% mutate(USE_ARS_Grade = case_when(
+  (urs_arsenal_pred < (urs_ars_mean + 0.5 * ursarssd)) & (urs_arsenal_pred > (urs_ars_mean - 0.5 * ursarssd)) ~ 50,
+  (urs_arsenal_pred < (urs_ars_mean + 0.5 * ursarssd)) & (urs_arsenal_pred >= urs_ars_mean) ~ 45,
+  (urs_arsenal_pred < (urs_ars_mean + ursarssd)) & (urs_arsenal_pred >= (urs_ars_mean + 0.5 * ursarssd)) ~ 40,
+  (urs_arsenal_pred > (urs_ars_mean + ursarssd)) & (urs_arsenal_pred <= (urs_ars_mean + 1.5 * ursarssd)) ~ 35,
+  (urs_arsenal_pred > (urs_ars_mean + 1.5 * ursarssd)) & (urs_arsenal_pred <= (urs_ars_mean + 2 * ursarssd)) ~ 30,
+  (urs_arsenal_pred > (urs_ars_mean + 2 * ursarssd)) & (urs_arsenal_pred <= (urs_ars_mean + 2.5 * ursarssd)) ~ 25,
+  (urs_arsenal_pred > (urs_ars_mean + 2.5 * ursarssd)) & (urs_arsenal_pred <= (urs_ars_mean + 3 * ursarssd)) ~ 20,
+  (urs_arsenal_pred >= (urs_ars_mean + 3 * ursarssd)) ~ 20,
+  (urs_arsenal_pred > (urs_ars_mean - 0.5 * ursarssd)) & (urs_arsenal_pred <= urs_ars_mean) ~ 55,
+  (urs_arsenal_pred > (urs_ars_mean - ursarssd)) & (urs_arsenal_pred <= (urs_ars_mean - 0.5 * ursarssd)) ~ 60,
+  (urs_arsenal_pred < (urs_ars_mean - ursarssd)) & (urs_arsenal_pred >= (urs_ars_mean - 1.5 * ursarssd)) ~ 65,
+  (urs_arsenal_pred < (urs_ars_mean - 1.5 * ursarssd)) & (urs_arsenal_pred >= (urs_ars_mean - 2 * ursarssd)) ~ 70,
+  (urs_arsenal_pred < (urs_ars_mean - 2 * ursarssd)) & (urs_arsenal_pred >= (urs_ars_mean - 2.5 * ursarssd)) ~ 75,
+  (urs_arsenal_pred < (urs_ars_mean - 2.5 * ursarssd)) & (urs_arsenal_pred >= (urs_ars_mean - 3 * ursarssd)) ~ 80,
+  (urs_arsenal_pred <= (urs_ars_mean - 3 * ursarssd)) ~ 80
+))
+#Present Value
+FIP_mean <- mean(Combined_Pitchers$FIP_pred)
+FIPsd <- sd(Combined_Pitchers$FIP_pred)
+Combined_Pitchers <- Combined_Pitchers %>% mutate(Pres_Grade = case_when(
+  (FIP_pred < (FIP_mean + 0.5 * FIPsd)) & (FIP_pred > (FIP_mean - 0.5 * FIPsd)) ~ 50,
+  (FIP_pred < (FIP_mean + 0.5 * FIPsd)) & (FIP_pred >= FIP_mean) ~ 45,
+  (FIP_pred < (FIP_mean + FIPsd)) & (FIP_pred >= (FIP_mean + 0.5 * FIPsd)) ~ 40,
+  (FIP_pred > (FIP_mean + FIPsd)) & (FIP_pred <= (FIP_mean + 1.5 * FIPsd)) ~ 35,
+  (FIP_pred > (FIP_mean + 1.5 * FIPsd)) & (FIP_pred <= (FIP_mean + 2 * FIPsd)) ~ 30,
+  (FIP_pred > (FIP_mean + 2 * FIPsd)) & (FIP_pred <= (FIP_mean + 2.5 * FIPsd)) ~ 25,
+  (FIP_pred > (FIP_mean + 2.5 * FIPsd)) & (FIP_pred <= (FIP_mean + 3 * FIPsd)) ~ 20,
+  (FIP_pred >= (FIP_mean + 3 * FIPsd)) ~ 20,
+  (FIP_pred > (FIP_mean - 0.5 * FIPsd)) & (FIP_pred <= FIP_mean) ~ 55,
+  (FIP_pred > (FIP_mean - FIPsd)) & (FIP_pred <= (FIP_mean - 0.5 * FIPsd)) ~ 60,
+  (FIP_pred < (FIP_mean - FIPsd)) & (FIP_pred >= (FIP_mean - 1.5 * FIPsd)) ~ 65,
+  (FIP_pred < (FIP_mean - 1.5 * FIPsd)) & (FIP_pred >= (FIP_mean - 2 * FIPsd)) ~ 70,
+  (FIP_pred < (FIP_mean - 2 * FIPsd)) & (FIP_pred >= (FIP_mean - 2.5 * FIPsd)) ~ 75,
+  (FIP_pred < (FIP_mean - 2.5 * FIPsd)) & (FIP_pred >= (FIP_mean - 3 * FIPsd)) ~ 80,
+  (FIP_pred <= (FIP_mean - 3 * FIPsd)) ~ 80
+))
+#Present Value Usage
+use_FIP_mean <- mean(Combined_Pitchers$use_FIP_pred)
+useFIPsd <- sd(Combined_Pitchers$use_FIP_pred)
+Combined_Pitchers <- Combined_Pitchers %>% mutate(USE_Pres_Grade = case_when(
+  (use_FIP_pred < (use_FIP_mean + 0.5 * useFIPsd)) & (use_FIP_pred > (use_FIP_mean - 0.5 * useFIPsd)) ~ 50,
+  (use_FIP_pred < (use_FIP_mean + 0.5 * useFIPsd)) & (use_FIP_pred >= use_FIP_mean) ~ 45,
+  (use_FIP_pred < (use_FIP_mean + useFIPsd)) & (use_FIP_pred >= (use_FIP_mean + 0.5 * useFIPsd)) ~ 40,
+  (use_FIP_pred > (use_FIP_mean + useFIPsd)) & (use_FIP_pred <= (use_FIP_mean + 1.5 * useFIPsd)) ~ 35,
+  (use_FIP_pred > (use_FIP_mean + 1.5 * useFIPsd)) & (use_FIP_pred <= (use_FIP_mean + 2 * useFIPsd)) ~ 30,
+  (use_FIP_pred > (use_FIP_mean + 2 * useFIPsd)) & (use_FIP_pred <= (use_FIP_mean + 2.5 * useFIPsd)) ~ 25,
+  (use_FIP_pred > (use_FIP_mean + 2.5 * useFIPsd)) & (use_FIP_pred <= (use_FIP_mean + 3 * useFIPsd)) ~ 20,
+  (use_FIP_pred >= (use_FIP_mean + 3 * useFIPsd)) ~ 20,
+  (use_FIP_pred > (use_FIP_mean - 0.5 * useFIPsd)) & (use_FIP_pred <= use_FIP_mean) ~ 55,
+  (use_FIP_pred > (use_FIP_mean - useFIPsd)) & (use_FIP_pred <= (use_FIP_mean - 0.5 * useFIPsd)) ~ 60,
+  (use_FIP_pred < (use_FIP_mean - useFIPsd)) & (use_FIP_pred >= (use_FIP_mean - 1.5 * useFIPsd)) ~ 65,
+  (use_FIP_pred < (use_FIP_mean - 1.5 * useFIPsd)) & (use_FIP_pred >= (use_FIP_mean - 2 * useFIPsd)) ~ 70,
+  (use_FIP_pred < (use_FIP_mean - 2 * useFIPsd)) & (use_FIP_pred >= (use_FIP_mean - 2.5 * useFIPsd)) ~ 75,
+  (use_FIP_pred < (use_FIP_mean - 2.5 * useFIPsd)) & (use_FIP_pred >= (use_FIP_mean - 3 * useFIPsd)) ~ 80,
+  (use_FIP_pred <= (use_FIP_mean - 3 * useFIPsd)) ~ 80
+))
+
+View(Combined_Pitchers)
+write.csv(Combined_Pitchers, "Final Grades.csv")
+
+
+
+
+### NEXT SEASON PREDICTED xFIP ##
+#Find the next year's xFIP and add it to the pitchers DF then take out only pitchers who didn't have a next year of at least 35 innings. This also removes all 2019 guys
+Combined_Pitchers <- Combined_Pitchers %>% mutate(Next_Year = Year + 1)
+names(FG_Pitchers)[2] <- "Next_Year"
+Next_xFIPs <- FG_Pitchers %>% dplyr::select(c("Name","Next_Year", "xFIP"))
+colnames(Next_xFIPs) <- c("Name", "Next_Year", "Next_xFIP")
+Combined_Pitchers2 <- left_join(Combined_Pitchers, Next_xFIPs, by = c("Name", "Next_Year"))
+Combined_Pitchers2 <- Combined_Pitchers2 %>% filter(!is.na(Next_xFIP)) #Now total of 691 pitchers
+
+#RF for Arsenal
+indexes <- sample(1:nrow(Combined_Pitchers2), size = 0.25*nrow(Combined_Pitchers2)) 
+test <- Combined_Pitchers2[indexes,]
+Train_Pitchers <- Combined_Pitchers2[-indexes,]
+trControl <- trainControl(method = "cv", number = 10)
+arsenal_rf2 <- caret::train(Next_xFIP ~ MaxFB + MaxBB + Pred_SwStr_CH, data = Train_Pitchers,
+                           method = "rf",
+                           trControl = trControl,
+                           importance = TRUE, na.action=na.exclude)
+usage_arsenal_rf2 <- caret::train(Next_xFIP ~ MaxFB * Fastball. + MaxBB * Breaking. + Pred_SwStr_CH * CH., data = Train_Pitchers,
+                                 method = "rf",
+                                 trControl = trControl,
+                                 importance = TRUE, na.action=na.exclude)
+proj_rf2 <- caret::train(Next_xFIP ~ MaxFB + MaxBB + Pred_SwStr_CH + BB., data = Train_Pitchers,
+                        method = "rf",
+                        trControl = trControl,
+                        importance = TRUE, na.action=na.exclude)
+usage_proj_rf2 <- caret::train(Next_xFIP ~ MaxFB * Fastball. + MaxBB * Breaking. + Pred_SwStr_CH * CH. + BB., data = Train_Pitchers,
+                              method = "rf",
+                              trControl = trControl,
+                              importance = TRUE, na.action=na.exclude)
+arsenal_rf2
+usage_arsenal_rf2
+proj_rf2
+usage_proj_rf2
+
+varImp(arsenal_rf2)
+varImp(usage_arsenal_rf2)
+varImp(proj_rf2)
+varImp(usage_proj_rf2)
+
+#Analyze the RFs, tried multiple train/test splits
+pred_p <- predict(object = arsenal_rf2, newdata = test)
+caret::RMSE(test$Next_xFIP, pred_p) # 0.840339, 0.7741545, 0.8717263
+caret::MAE(test$Next_xFIP, pred_p) # 0.621297, 0.6150092, 0.691468
+cor(test$Next_xFIP, pred_p) * cor(test$Next_xFIP, pred_p) # 0.0542076, 0.04296649, 0.1018177
+
+pred_p <- predict(object = usage_arsenal_rf2, newdata = test)
+caret::RMSE(test$Next_xFIP, pred_p) # 0.8111699, 0.7502634, 0.8641312
+caret::MAE(test$Next_xFIP, pred_p) # 0.6128019, 0.5715693, 0.6919394
+cor(test$Next_xFIP, pred_p) * cor(test$Next_xFIP, pred_p) # 0.1007991, 0.03661429, 0.1084021
+
+pred_p <- predict(object = proj_rf2, newdata = test)
+caret::RMSE(test$Next_xFIP, pred_p) # 0.8181112, 0.7426782, 0.8662972
+caret::MAE(test$Next_xFIP, pred_p) # 0.5979798, 0.5989859, 0.6751678
+cor(test$Next_xFIP, pred_p) * cor(test$Next_xFIP, pred_p) # 0.09043718, 0.0753247, 0.1115708
+
+pred_p <- predict(object = usage_proj_rf2, newdata = test)
+caret::RMSE(test$Next_xFIP, pred_p) # 0.7989788, 0.721346, 0.854331
+caret::MAE(test$Next_xFIP, pred_p) # 0.5987596, 0.5475642, 0.6820127
+cor(test$Next_xFIP, pred_p) * cor(test$Next_xFIP, pred_p) # 0.1297806, 0.09031248, 0.1281948
+
+
+#Predictions for the next year on guys who have that data
+Combined_Pitchers2$next_arsenal_pred <- predict(object = arsenal_rf2, newdata = Combined_Pitchers2)
+Combined_Pitchers2$next_urs_arsenal_pred <- predict(object = usage_arsenal_rf2, newdata = Combined_Pitchers2)
+Combined_Pitchers2$next_FIP_pred <- predict(object = proj_rf2, newdata = Combined_Pitchers2)
+Combined_Pitchers2$next_use_FIP_pred <- predict(object = usage_proj_rf2, newdata = Combined_Pitchers2)
+View(Combined_Pitchers2)
+write.csv(Combined_Pitchers2, "Final Grades2.csv")
+
+#Predictions for 2020 from 2019 players
+Combined_Pitchers_2019 <- Combined_Pitchers %>% filter(Year == 2019)
+Combined_Pitchers_2019$next_arsenal_pred <- predict(object = arsenal_rf2, newdata = Combined_Pitchers_2019)
+Combined_Pitchers_2019$next_urs_arsenal_pred <- predict(object = usage_arsenal_rf2, newdata = Combined_Pitchers_2019)
+Combined_Pitchers_2019$next_FIP_pred <- predict(object = proj_rf2, newdata = Combined_Pitchers_2019)
+Combined_Pitchers_2019$next_use_FIP_pred <- predict(object = usage_proj_rf2, newdata = Combined_Pitchers_2019)
+View(Combined_Pitchers_2019)
+write.csv(Combined_Pitchers_2019, "2020 Predictions.csv")
+
+
+
+
+
+### Looking at the biggest differences from predicted to actual ###
+Following_Year_Predictions <- read_excel("Following Year Predictions.xlsx")
+View(Following_Year_Predictions) 
+
+#Plot differences based on actual
+ggplot(Following_Year_Predictions, aes(x = Next_xFIP, y = abs(Next_Projected_FIP_Difference))) + geom_point() + geom_smooth() + ggtitle("Projected xFIP Difference from Real xFIP") + labs(y = "xFIP Difference (Actual - Predicted)", x = "Next xFIP") + theme(plot.title = element_text(hjust = 0.5)) + theme(plot.title = element_text(face = "bold", size = 14)) + theme(axis.title.x = element_text(face = "bold")) + theme(axis.title.y = element_text(face = "bold")) + theme(legend.title = element_text(face = "bold")) + xlim(2, 6)
+
+#Create FIP groups
+Following_Year_Predictions <- Following_Year_Predictions %>% mutate(FIP_Group = case_when(
+  Next_xFIP <= 2.5 ~ "< 2.5",
+  Next_xFIP > 2.5 & Next_xFIP <= 3.0 ~ "2.5 - 3.0",
+  Next_xFIP > 3.0 & Next_xFIP <= 3.5 ~ "3.0 - 3.5",
+  Next_xFIP > 3.5 & Next_xFIP <= 4.0 ~ "3.5 - 4.0",
+  Next_xFIP > 4.0 & Next_xFIP <= 4.5 ~ "4.0 - 4.5",
+  Next_xFIP > 4.5 & Next_xFIP <= 5.0 ~ "4.5 - 5.0",
+  Next_xFIP > 5.0 & Next_xFIP <= 5.5 ~ "5.0 - 5.5", 
+  Next_xFIP > 5.5 ~ "> 5.5"
+))
+#Summarise Groups
+FIP_Groups_Summary <- Following_Year_Predictions %>% group_by(FIP_Group) %>% summarise(N = n(), Next_xFIP = mean(Next_xFIP), Predicted_Next_xFIP = mean(Next_Usage_Predicted_xFIP), Prediction_Difference = mean(abs(Next_Projected_FIP_Difference)))
+View(FIP_Groups_Summary)
+
+#Look at biggest misses in prediction groups
+Following_Year_Predictions$Next_Projected_FIP_Difference <- abs(Following_Year_Predictions$Next_Projected_FIP_Difference)
+Group_4 <- Following_Year_Predictions %>% filter(FIP_Group == "3.5 - 4.0") %>% arrange((desc(Next_Projected_FIP_Difference)))
+Group_45 <- Following_Year_Predictions %>% filter(FIP_Group == "4.0 - 4.5") %>% arrange((desc(Next_Projected_FIP_Difference)))
+Group_5 <- Following_Year_Predictions %>% filter(FIP_Group == "4.5 - 5.0") %>% arrange((desc(Next_Projected_FIP_Difference)))
+
+```
